@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from app.models import DipLot, User, Vat, Workshop
+from app.models import CleaningTicket, DipLot, User, Vat, Workshop
 
 _PWD_SALT = os.environ.get("PWD_SALT", "indigovat-dev-salt").encode("utf-8")
 
@@ -138,6 +138,18 @@ def ensure_seed_data(db: Session) -> None:
                 (20, "33.00", "-505.00"),
                 (10, "38.50", "-530.00"),
             ],
+        )
+    )
+
+    admin = db.query(User).filter_by(username="admin").first()
+    # 可染色缸 V-12 带一张进行中的清缸交接卷（近 5 笔合计 119.50 米，清出 60 米）
+    db.add(
+        CleaningTicket(
+            vat_id=v4.id,
+            opener_id=admin.id,
+            clothMeters=Decimal("60.00"),
+            receiveTeam="清缸夜班",
+            openedAt=now - timedelta(hours=2),
         )
     )
     db.commit()

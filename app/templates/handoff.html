@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}清缸交接{% endblock %}
+{% block content %}
+<div x-data="handoffPage()" x-init="init()">
+  {% if error %}
+  <div class="error-box">{{ error }}</div>
+  {% endif %}
+
+  <div class="panel-grid">
+    <section class="panel">
+      <h2>进行中的交接卷</h2>
+      <p class="hint">同缸进行中只许一张；完工后染缸方可退回闲置。</p>
+      {% if open_tickets %}
+      <ul class="ticket-list">
+        {% for t in open_tickets %}
+        <li class="ticket-card">
+          <div class="ticket-head">
+            <strong>{{ t.vatCode }}</strong>
+            <span class="ticket-tag">进行中</span>
+          </div>
+          <div class="ticket-meta">{{ t.workshopName }} · 开卷人 {{ t.openerName }} · {{ t.openedAt }}</div>
+          <div class="ticket-meta">清出 <strong>{{ t.clothMeters }}</strong> 米 / 上限 {{ t.cap }} 米 · 接收班组：{{ t.receiveTeam }}</div>
+
+          <div class="ticket-actions">
+            {% if is_supervisor %}
+            <form method="post" action="/handoff/tickets/{{ t.id }}/complete"
+                  onsubmit="return confirm('完成前会再次核对最新浸染电位仍 ≤ -500 mV，确认完工？');">
+              <button type="submit" class="btn-complete">主管完成</button>
+            </form>
+            {% else %}
+            <span class="ticket-note">仅主管可点完成</span>
+            {% endif %}
+            <button type="button" class="btn-link" @click="editing = editing === {{ t.id }} ? null : {{ t.id }}">改米数/班组</button>
+          </div>
+
+          <form x-show="editing === {{ t.id }}" x-cloak method="post"
+                action="/handoff/tickets/{{ t.id }}/update" class="ticket-edit">
+            <label>清出米数（正，上限 {{ t.cap }}）
+              <input type="number" name="clothMeters" step="0.01" min="0.01" max="{{ t.cap }}"
+                     value="{{ t.clothMeters }}" required>
+            </label>
+            <label>接收班组
+              <input type="text" name="receiveTeam" maxlength="80" value="{{ t.receiveTeam }}" required>
+            </label>
+            <button type="submit">保存修改</button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="empty-note">当前没有进行中的交接卷。</p>
+      {% endif %}
+
+      {% if done_tickets %}
+      <h3 style="font-size:0.95rem;margin:1.2rem 0 0.4rem;color:#1f4d6b">最近完工</h3>
+      <ul class="ticket-list done">
+        {% for t in done_tickets %}
+        <li class="ticket-card">
+          <div class="ticket-head">
+            <strong>{{ t.vatCode }}</strong>
+            <span class="ticket-tag done-tag">已完成</span>
+          </div>
+          <div class="ticket-meta">{{ t.workshopName }} · 开卷 {{ t.openedAt }} · 完工 {{ t.completedAt }}{% if t.completedByName %} · {{ t.completedByName }}{% endif %}</div>
+          <div class="ticket-meta">清出 {{ t.clothMeters }} 米 · 接收班组：{{ t.receiveTeam }}</div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <h2>开清缸交接卷</h2>
+      <p class="hint">可染色缸退回闲置前，先开卷清缸、交接给接收班组。</p>
+      <form method="post" action="/handoff/tickets">
+        <label>染缸（仅可染色缸可开卷）
+          <select name="vat_id" required @change="onVatChange($event.target.value)">
+            <option value="" disabled {% if not form.vat_id %}selected{% endif %}>请选择可染色缸…</option>
+            {% for v in openable %}
+            <option value="{{ v.id }}"
+                    {% if form.vat_id == v.id|string %}selected{% endif %}
+                    {% if v.hasOpen %}disabled{% endif %}>
+              {{ v.code }} · {{ v.workshopName }} · 上限 {{ v.cap }} 米{% if v.hasOpen %}（已有进行中卷）{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>清出米数
+          <input type="number" name="clothMeters" step="0.01" min="0.01"
+                 :max="selectedCap() || ''" :placeholder="selectedCap() ? '正数，不超过 ' + selectedCap() + ' 米'"
+                 value="{{ form.clothMeters }}" required>
+        </label>
+        <p class="cap-line" x-show="selectedCap() !== null" x-cloak>
+          清出上限：该缸最近 5 笔浸染布米合计 <strong x-text="selectedCap()"></strong> 米。
+        </p>
+        <label>接收班组
+          <input type="text" name="receiveTeam" maxlength="80" value="{{ form.receiveTeam }}"
+                 placeholder="例如：夜班一组" required>
+        </label>
+        <p class="cap-line">完工时间起初不填，由主管完成时落下。</p>
+        <button type="submit">开卷</button>
+      </form>
+
+      <div class="rules-box">
+        <h3>规则说明</h3>
+        <ul>
+          <li><strong>谁能开卷：</strong>仅「可染色」状态的染缸可开卷；同缸进行中的卷至多一张。</li>
+          <li><strong>清出米数：</strong>须为正数，且不得超过该缸<strong>最近 5 笔浸染布米合计</strong>；新建与修改走同一校验。</li>
+          <li><strong>完成条件：</strong>由主管点「主管完成」落下完工时间，此时会再次核对该缸最新浸染电位仍 ≤ -500 mV；不达标则不能完工。</li>
+          <li><strong>退回闲置：</strong>卷进行中时染缸禁止改为闲置，完工后才可退回闲置（与改状态同一校验）。</li>
+          <li><strong>并发：</strong>两人几乎同时给同一缸开卷，数据库只放行一张，被拒一方刷新后本页与还原台仍可正常打开。</li>
+        </ul>
+      </div>
+    </section>
+  </div>
+
+  <p class="rule-foot">可染色退回闲置须先走完清缸交接卷；缸位条上「交接中」即该缸有进行中的卷。</p>
+</div>
+
+<script>
+  function handoffPage() {
+    return {
+      openable: {{ openable | tojson }},
+      editing: null,
+      pickedVat: {{ form.vat_id | tojson }},
+      init() {
+        if (!this.openable.some(v => String(v.id) === this.pickedVat)) this.pickedVat = '';
+      },
+      onVatChange(id) { this.pickedVat = id; },
+      selectedCap() {
+        const v = this.openable.find(x => String(x.id) === String(this.pickedVat));
+        return v ? v.cap : null;
+      },
+    };
+  }
+</script>
+{% endblock %}

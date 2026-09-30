@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.auth import get_current_user
 from app.db import get_db
-from app.models import DipLot, Vat, Workshop
+from app.models import CleaningTicket, DipLot, Vat, Workshop
 from app.services.vat_rules import VatRuleError, validate_vat_status_change
 
 router = APIRouter()
@@ -61,6 +61,7 @@ def _vat_payload(vat: Vat) -> dict:
     chronological = lots
     latest = lots[-1] if lots else None
     recent = list(reversed(lots[-8:]))  # 展开区展示近几笔
+    open_ticket = vat.open_ticket()
     return {
         "id": vat.id,
         "code": vat.code,
@@ -73,6 +74,7 @@ def _vat_payload(vat: Vat) -> dict:
         "lastRedox": float(latest.redoxMv) if latest and latest.redoxMv is not None else None,
         "lastMeters": float(latest.clothMeters) if latest else None,
         "lastDippedAt": latest.dippedAt.strftime("%Y-%m-%d %H:%M") if latest else None,
+        "handoffOpen": open_ticket is not None,
         "spark": _spark_points(chronological),
         "recentLots": [
             {
@@ -98,7 +100,11 @@ def _bay_context(
     workshops = db.query(Workshop).order_by(Workshop.name).all()
     vats = (
         db.query(Vat)
-        .options(joinedload(Vat.workshop), joinedload(Vat.lots))
+        .options(
+            joinedload(Vat.workshop),
+            joinedload(Vat.lots),
+            joinedload(Vat.tickets),
+        )
         .order_by(Vat.code)
         .all()
     )
@@ -141,7 +147,7 @@ async def bay_vat_status(
         return RedirectResponse("/login", status_code=303)
     item = (
         db.query(Vat)
-        .options(joinedload(Vat.workshop), joinedload(Vat.lots))
+        .options(joinedload(Vat.workshop), joinedload(Vat.lots), joinedload(Vat.tickets))
         .filter(Vat.id == pk)
         .first()
     )
@@ -151,7 +157,7 @@ async def bay_vat_status(
     error = None
     try:
         latest = item.latest_lot()
-        validate_vat_status_change(item, status, latest)
+        validate_vat_status_change(item, status, latest, item.open_ticket())
         item.status = status
         db.commit()
         return RedirectResponse(f"/?vat={pk}" + (f"&workshop={ws}" if ws else ""), status_code=303)

@@ -37,6 +37,7 @@
           <span class="status-dot"></span>
           <span x-text="v.statusLabel"></span>
         </div>
+        <div class="handoff-badge" x-show="v.handoffOpen" x-cloak>交接中</div>
         <svg class="spark" width="72" height="28" viewBox="0 0 72 28" aria-hidden="true">
           <polyline
             x-show="v.spark.length"
@@ -103,11 +104,15 @@
               <input type="hidden" name="workshop" :value="filterWs || ''">
               <label>目标状态
                 <select name="status" required :value="selected().status">
-                  <option value="idle">闲置</option>
+                  <option value="idle" :disabled="selected().handoffOpen">闲置</option>
                   <option value="reducing">还原中</option>
                   <option value="ready">可染色</option>
                 </select>
               </label>
+              <p x-show="selected().handoffOpen" x-cloak
+                 style="font-size:0.8rem;color:#8a5a12;margin:-0.2rem 0 0.7rem">
+                该缸交接卷进行中，须主管在<a href="/handoff">清缸交接</a>完工后方可退回闲置。
+              </p>
               <button type="submit">更新状态</button>
             </form>
             <h3 style="font-size:0.95rem;margin:1.25rem 0 0.4rem;color:#1f4d6b">近几笔浸染</h3>
