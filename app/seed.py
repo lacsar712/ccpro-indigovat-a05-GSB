@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from app.models import DipLot, User, Vat, Workshop
+from app.models import CleanHandover, DipLot, User, Vat, Workshop
 
 _PWD_SALT = os.environ.get("PWD_SALT", "indigovat-dev-salt").encode("utf-8")
 
@@ -43,6 +43,7 @@ def ensure_seed_data(db: Session) -> None:
     db.commit()
 
     if db.query(Workshop).first():
+        _ensure_handover_seed(db)
         return
 
     w1 = Workshop(name="蓝靛湾一号坊", region="黔东南", notes="晨露还原较快")
@@ -138,6 +139,28 @@ def ensure_seed_data(db: Session) -> None:
                 (20, "33.00", "-505.00"),
                 (10, "38.50", "-530.00"),
             ],
+        )
+    )
+    db.commit()
+    _ensure_handover_seed(db)
+
+
+def _ensure_handover_seed(db: Session) -> None:
+    """幂等：保证可染色缸 V-12 带一张进行中清缸交接卷（老库启动时也会补种）。"""
+    if db.query(CleanHandover).first():
+        return
+    vat = db.query(Vat).filter_by(code="V-12").first()
+    worker = db.query(User).filter_by(username="worker").first()
+    if not vat or not worker or vat.status != Vat.STATUS_READY:
+        return
+    db.add(
+        CleanHandover(
+            vat_id=vat.id,
+            opener_id=worker.id,
+            clearedMeters=Decimal("96.00"),
+            receivingTeam="清水江乙班",
+            openedAt=datetime.now(timezone.utc) - timedelta(hours=2),
+            finishedAt=None,
         )
     )
     db.commit()

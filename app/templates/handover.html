@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}清缸交接{% endblock %}
+{% block content %}
+<style>
+  .ticket {
+    border: 1px solid #c5d8d6;
+    border-radius: 12px;
+    padding: 0.85rem 1rem 0.95rem;
+    margin-bottom: 0.85rem;
+    background: rgba(255, 255, 255, 0.6);
+  }
+  .ticket-head {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.35rem 0.9rem;
+    font-size: 0.95rem;
+    color: var(--indigo-deep);
+    margin-bottom: 0.55rem;
+  }
+  .ticket-head .who { color: #4a6670; font-size: 0.85rem; }
+  .ticket form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.6rem;
+    margin: 0;
+  }
+  .ticket label { flex: 1 1 180px; margin: 0; }
+  .ticket button { width: auto; margin: 0; padding: 0.4rem 0.95rem; font-size: 0.88rem; }
+  .ticket .complete-btn {
+    background: var(--ready);
+    border-color: var(--ready);
+  }
+  .ticket .awaiting { font-size: 0.85rem; color: #6b7c85; margin: 0.3rem 0 0; }
+  .done-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+  .done-table th, .done-table td {
+    text-align: left;
+    padding: 0.4rem 0.5rem;
+    border-bottom: 1px dashed #c5d8d6;
+    color: #35505a;
+  }
+  .done-table th { color: var(--indigo-deep); font-weight: 600; }
+  .empty-note { color: #6b7c85; font-size: 0.9rem; margin: 0.25rem 0 0; }
+  .open-form { display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 0.75rem; align-items: end; }
+  .open-form label { margin: 0; }
+  .open-form button { width: auto; margin: 0; }
+  @media (max-width: 900px) { .open-form { grid-template-columns: 1fr; } }
+</style>
+
+{% if error %}
+<div class="error-box">{{ error }}</div>
+{% endif %}
+
+<div class="panel" style="margin-bottom:1.1rem">
+  <h2>进行中交接卷</h2>
+  <p class="hint">同缸进行中只许一张；进行中该缸禁止改闲置。完工时间在主管点完成时落下。</p>
+  {% for t in active_tickets %}
+  <div class="ticket">
+    <div class="ticket-head">
+      <span><strong>{{ t.vatCode }}</strong> · {{ t.workshopName }} · {{ t.dyeType }}</span>
+      <span class="who">开卷人 {{ t.opener }} · 开卷 {{ t.openedAt }} · 完工 未落</span>
+    </div>
+    <form method="post" action="/handovers/{{ t.id }}/edit">
+      <label>清出米数（上限 {{ t.cap }} m）
+        <input type="number" name="clearedMeters" step="0.01" min="0.01" max="{{ t.cap }}"
+               value="{{ t.clearedMeters }}" required>
+      </label>
+      <label>接收班组
+        <input type="text" name="receivingTeam" value="{{ t.receivingTeam }}" maxlength="80" required>
+      </label>
+      <button type="submit">保存修改</button>
+    </form>
+    {% if user.is_superuser %}
+    <form method="post" action="/handovers/{{ t.id }}/complete" style="margin-top:0.55rem"
+          onsubmit="return confirm('确认完成交接？将落下完工时间，并复核该缸最新电位仍 ≤ -500 mV。');">
+      <button type="submit" class="complete-btn">主管完成 · 落完工时间</button>
+    </form>
+    {% else %}
+    <p class="awaiting">待主管完成（完成时复核最新电位 ≤ -500 mV，并落下完工时间）。</p>
+    {% endif %}
+  </div>
+  {% else %}
+  <p class="empty-note">暂无进行中的交接卷。</p>
+  {% endfor %}
+</div>
+
+<div class="panel" style="margin-bottom:1.1rem">
+  <h2>开新卷</h2>
+  <p class="hint">仅「可染色」缸可开卷；清出米数须为正，上限 = 该缸最近 5 笔浸染布米合计；开卷时间即提交时刻。</p>
+  {% if eligible_vats %}
+  <form method="post" action="/handovers" class="open-form">
+    <label>染缸（可染色且无进行中卷）
+      <select name="vat_id" required>
+        {% for v in eligible_vats %}
+        <option value="{{ v.id }}">{{ v.code }} · {{ v.workshopName }} · 清出上限 {{ v.cap }} m</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>清出米数
+      <input type="number" name="clearedMeters" step="0.01" min="0.01" required placeholder="正数，不超上限">
+    </label>
+    <label>接收班组
+      <input type="text" name="receivingTeam" maxlength="80" required placeholder="例如 甲班">
+    </label>
+    <button type="submit">开卷</button>
+  </form>
+  {% else %}
+  <p class="empty-note">当前没有可开卷的染缸（须可染色且无进行中卷）。</p>
+  {% endif %}
+</div>
+
+<div class="panel">
+  <h2>最近完成</h2>
+  <p class="hint">完工时间非空即已完成；可染色缸凭已完成的交接卷方可退回闲置。</p>
+  {% if completed_tickets %}
+  <table class="done-table">
+    <thead>
+      <tr><th>缸位</th><th>开卷人</th><th>清出米数</th><th>接收班组</th><th>开卷时间</th><th>完工时间</th></tr>
+    </thead>
+    <tbody>
+      {% for t in completed_tickets %}
+      <tr>
+        <td>{{ t.vatCode }} · {{ t.workshopName }}</td>
+        <td>{{ t.opener }}</td>
+        <td>{{ t.clearedMeters }} m</td>
+        <td>{{ t.receivingTeam }}</td>
+        <td>{{ t.openedAt }}</td>
+        <td>{{ t.finishedAt }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-note">尚无已完成的交接卷。</p>
+  {% endif %}
+</div>
+{% endblock %}

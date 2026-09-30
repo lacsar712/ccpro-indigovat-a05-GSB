@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.auth import get_current_user
 from app.db import get_db
-from app.models import DipLot, Vat, Workshop
+from app.models import CleanHandover, DipLot, Vat, Workshop
 from app.services.vat_rules import VatRuleError, validate_vat_status_change
 
 router = APIRouter()
@@ -70,6 +70,7 @@ def _vat_payload(vat: Vat) -> dict:
         "statusLabel": STATUS_LABELS.get(vat.status, vat.status),
         "workshopId": vat.workshop_id,
         "workshopName": vat.workshop.name if vat.workshop else "",
+        "handoverActive": any(h.finishedAt is None for h in vat.handovers),
         "lastRedox": float(latest.redoxMv) if latest and latest.redoxMv is not None else None,
         "lastMeters": float(latest.clothMeters) if latest else None,
         "lastDippedAt": latest.dippedAt.strftime("%Y-%m-%d %H:%M") if latest else None,
@@ -98,7 +99,7 @@ def _bay_context(
     workshops = db.query(Workshop).order_by(Workshop.name).all()
     vats = (
         db.query(Vat)
-        .options(joinedload(Vat.workshop), joinedload(Vat.lots))
+        .options(joinedload(Vat.workshop), joinedload(Vat.lots), joinedload(Vat.handovers))
         .order_by(Vat.code)
         .all()
     )
@@ -141,7 +142,7 @@ async def bay_vat_status(
         return RedirectResponse("/login", status_code=303)
     item = (
         db.query(Vat)
-        .options(joinedload(Vat.workshop), joinedload(Vat.lots))
+        .options(joinedload(Vat.workshop), joinedload(Vat.lots), joinedload(Vat.handovers))
         .filter(Vat.id == pk)
         .first()
     )
@@ -151,7 +152,14 @@ async def bay_vat_status(
     error = None
     try:
         latest = item.latest_lot()
-        validate_vat_status_change(item, status, latest)
+        # 进行中禁闲置与完成条件整合进既有改闲置入口，与改状态校验同一函数
+        active_h = next((h for h in item.handovers if h.finishedAt is None), None)
+        last_h = (
+            sorted(item.handovers, key=lambda h: (h.openedAt, h.id), reverse=True)[0]
+            if item.handovers
+            else None
+        )
+        validate_vat_status_change(item, status, latest, active_h, last_h)
         item.status = status
         db.commit()
         return RedirectResponse(f"/?vat={pk}" + (f"&workshop={ws}" if ws else ""), status_code=303)

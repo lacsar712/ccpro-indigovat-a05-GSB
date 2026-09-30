@@ -81,6 +81,26 @@
       color: rgba(216, 235, 232, 0.72);
       font-size: 0.92rem;
     }
+    .topnav {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.7rem;
+    }
+    .topnav a {
+      color: var(--foam);
+      text-decoration: none;
+      font-size: 0.88rem;
+      padding: 0.3rem 0.85rem;
+      border-radius: 999px;
+      border: 1px solid rgba(216, 235, 232, 0.35);
+      background: rgba(11, 28, 44, 0.35);
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .topnav a:hover { border-color: rgba(216, 235, 232, 0.7); }
+    .topnav a.on {
+      background: linear-gradient(135deg, rgba(61, 139, 156, 0.85), rgba(31, 77, 107, 0.95));
+      border-color: rgba(216, 235, 232, 0.65);
+    }
     .user-pill {
       display: flex;
       align-items: center;
@@ -198,6 +218,17 @@
     .st-reducing .status-dot { background: #7eb8d8; box-shadow: 0 0 8px rgba(126, 184, 216, 0.7); }
     .st-ready .status-dot { background: #5dcea8; box-shadow: 0 0 8px rgba(93, 206, 168, 0.65); }
     .status-label { font-size: 0.78rem; opacity: 0.9; }
+    .handover-tag {
+      display: inline-block;
+      margin-left: 0.4rem;
+      padding: 0.08rem 0.5rem;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      color: #0b1c2c;
+      background: linear-gradient(135deg, #ffd98a, #f0b95e);
+      box-shadow: 0 0 8px rgba(240, 185, 94, 0.45);
+      vertical-align: middle;
+    }
     .spark { display: block; margin-top: 0.25rem; opacity: 0.9; }
     .panel {
       background: linear-gradient(165deg, rgba(244, 248, 247, 0.97), rgba(232, 242, 240, 0.94));
@@ -290,6 +321,10 @@
       <div>
         <h1>染缸还原台</h1>
         <p class="sub">IndigoVat · 按缸位盯氧化还原，点开记浸染与改状态</p>
+        <nav class="topnav" aria-label="主导航">
+          <a href="/" class="{{ 'on' if active == 'bay' else '' }}">还原台</a>
+          <a href="/handovers" class="{{ 'on' if active == 'handovers' else '' }}">清缸交接</a>
+        </nav>
       </div>
       <div class="user-pill">
         <span>{{ user.username }}</span>

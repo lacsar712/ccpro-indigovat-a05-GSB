@@ -36,6 +36,7 @@
         <div class="status-label">
           <span class="status-dot"></span>
           <span x-text="v.statusLabel"></span>
+          <span class="handover-tag" x-show="v.handoverActive" x-cloak>交接中</span>
         </div>
         <svg class="spark" width="72" height="28" viewBox="0 0 72 28" aria-hidden="true">
           <polyline
@@ -78,7 +79,8 @@
         </h2>
         <p class="hint">当前 <strong x-text="selected().statusLabel"></strong>
           · 最近浸染 <span x-text="selected().lastDippedAt || '—'"></span>
-          · 设为可染色须最新批次电位 ≤ -500 mV</p>
+          · 设为可染色须最新批次电位 ≤ -500 mV
+          · 可染色退回闲置须先在<a href="/handovers" style="color:#1f4d6b">清缸交接专页</a>完成交接卷，进行中禁闲置</p>
 
         <div class="panel-grid">
           <div>
